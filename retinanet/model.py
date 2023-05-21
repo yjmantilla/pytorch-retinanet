@@ -351,3 +351,18 @@ def resnet152(num_classes, pretrained=False, **kwargs):
     if pretrained:
         model.load_state_dict(model_zoo.load_url(model_urls['resnet152'], model_dir='.'), strict=False)
     return model
+
+def custom_model(num_classes,PATH_TO_WEIGHTS):
+    retinanet=torch.load(PATH_TO_WEIGHTS)
+    if not isinstance(retinanet,torch.nn.parallel.DataParallel):
+        retinanet.classificationModel = ClassificationModel(256, num_classes=num_classes)
+        prior = 0.01
+        retinanet.classificationModel.output.weight.data.fill_(0)
+        retinanet.classificationModel.output.bias.data.fill_(-math.log((1.0 - prior) / prior))
+    else:
+        retinanet.module.classificationModel = ClassificationModel(256, num_classes=num_classes)
+        prior = 0.01
+        retinanet.module.classificationModel.output.weight.data.fill_(0)
+        retinanet.module.classificationModel.output.bias.data.fill_(-math.log((1.0 - prior) / prior))
+
+    return retinanet

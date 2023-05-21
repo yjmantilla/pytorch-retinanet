@@ -53,10 +53,12 @@ def main(args=None):
 		if torch.cuda.is_available():
 			retinanet = retinanet.cuda()
 
-	if torch.cuda.is_available():
-		retinanet = torch.nn.DataParallel(retinanet).cuda()
-	else:
-		retinanet = torch.nn.DataParallel(retinanet)
+	# I think the loaded model is already data parallel
+	if not isinstance(retinanet,torch.nn.parallel.DataParallel):
+		if torch.cuda.is_available():
+			retinanet = torch.nn.DataParallel(retinanet).cuda()
+		else:
+			retinanet = torch.nn.DataParallel(retinanet)
 
 	retinanet.eval()
 

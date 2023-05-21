@@ -26,6 +26,7 @@ def main(args=None):
     # Create the model
     #retinanet = model.resnet50(num_classes=dataset_val.num_classes(), pretrained=True)
     retinanet=torch.load(parser.model_path)
+    print(retinanet)
 
     use_gpu = True
 
@@ -33,17 +34,17 @@ def main(args=None):
         if torch.cuda.is_available():
             retinanet = retinanet.cuda()
 
-    if torch.cuda.is_available():
-        #retinanet.load_state_dict(torch.load(parser.model_path))
-        retinanet = torch.nn.DataParallel(retinanet).cuda()
-    else:
-        retinanet.load_state_dict(torch.load(parser.model_path))
-        retinanet = torch.nn.DataParallel(retinanet)
+    # I think the loaded model is already data parallel
+    if not isinstance(retinanet,torch.nn.parallel.DataParallel):
+        if torch.cuda.is_available():
+            retinanet = torch.nn.DataParallel(retinanet).cuda()
+        else:
+            retinanet = torch.nn.DataParallel(retinanet)
 
     retinanet.training = False
     retinanet.eval()
     retinanet.module.freeze_bn()
-
+    #retinanet.freeze_bn()
     print(csv_eval.evaluate(dataset_val, retinanet,iou_threshold=float(parser.iou_threshold)))
 
 

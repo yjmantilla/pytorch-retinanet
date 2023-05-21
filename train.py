@@ -2,7 +2,7 @@ import argparse
 import collections
 
 import numpy as np
-
+import torch.nn as nn
 import torch
 import torch.optim as optim
 from torchvision import transforms
@@ -16,9 +16,16 @@ from retinanet import coco_eval
 from retinanet import csv_eval
 
 assert torch.__version__.split('.')[0] == '1'
+from torch.utils.tensorboard import SummaryWriter
+import datetime
+log_folder = "runs/" 
+writer = SummaryWriter(log_folder,filename_suffix=datetime.datetime.now().strftime("%Y%m%d-%H%M%S")) # you can change the folder to compare different models
+TENSORBOARD = True
 
 print('CUDA available: {}'.format(torch.cuda.is_available()))
 
+# import os
+# os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "max_split_size_mb:<enter-size-here>"
 
 def main(args=None):
     parser = argparse.ArgumentParser(description='Simple training script for training a RetinaNet network.')
@@ -28,7 +35,7 @@ def main(args=None):
     parser.add_argument('--csv_train', help='Path to file containing training annotations (see readme)')
     parser.add_argument('--csv_classes', help='Path to file containing class list (see readme)')
     parser.add_argument('--csv_val', help='Path to file containing validation annotations (optional, see readme)')
-
+    parser.add_argument('--custom_model',help='Path to a pretrained custom model (optional)',default=None)
     parser.add_argument('--depth', help='Resnet depth, must be one of 18, 34, 50, 101, 152', type=int, default=50)
     parser.add_argument('--epochs', help='Number of epochs', type=int, default=100)
 
@@ -66,37 +73,51 @@ def main(args=None):
     else:
         raise ValueError('Dataset type not understood (must be csv or coco), exiting.')
 
-    sampler = AspectRatioBasedSampler(dataset_train, batch_size=2, drop_last=False)
+    sampler = AspectRatioBasedSampler(dataset_train, batch_size=3, drop_last=False)
     dataloader_train = DataLoader(dataset_train, num_workers=3, collate_fn=collater, batch_sampler=sampler)
 
     if dataset_val is not None:
-        sampler_val = AspectRatioBasedSampler(dataset_val, batch_size=1, drop_last=False)
+        sampler_val = AspectRatioBasedSampler(dataset_val, batch_size=3, drop_last=False)
         dataloader_val = DataLoader(dataset_val, num_workers=3, collate_fn=collater, batch_sampler=sampler_val)
 
     # Create the model
-    if parser.depth == 18:
-        retinanet = model.resnet18(num_classes=dataset_train.num_classes(), pretrained=True)
-    elif parser.depth == 34:
-        retinanet = model.resnet34(num_classes=dataset_train.num_classes(), pretrained=True)
-    elif parser.depth == 50:
-        retinanet = model.resnet50(num_classes=dataset_train.num_classes(), pretrained=True)
-    elif parser.depth == 101:
-        retinanet = model.resnet101(num_classes=dataset_train.num_classes(), pretrained=True)
-    elif parser.depth == 152:
-        retinanet = model.resnet152(num_classes=dataset_train.num_classes(), pretrained=True)
+    if parser.custom_model:
+        retinanet = model.custom_model(dataset_train.num_classes(),parser.custom_model)
     else:
-        raise ValueError('Unsupported model depth, must be one of 18, 34, 50, 101, 152')
+        if parser.depth == 18:
+            retinanet = model.resnet18(num_classes=dataset_train.num_classes(), pretrained=True)
+        elif parser.depth == 34:
+            retinanet = model.resnet34(num_classes=dataset_train.num_classes(), pretrained=True)
+        elif parser.depth == 50:
+            retinanet = model.resnet50(num_classes=dataset_train.num_classes(), pretrained=True)
+        elif parser.depth == 101:
+            retinanet = model.resnet101(num_classes=dataset_train.num_classes(), pretrained=True)
+        elif parser.depth == 152:
+            retinanet = model.resnet152(num_classes=dataset_train.num_classes(), pretrained=True)
+        else:
+            raise ValueError('Unsupported model depth, must be one of 18, 34, 50, 101, 152')
 
     use_gpu = True
+    #print(type(retinanet),dir(retinanet))
 
     if use_gpu:
         if torch.cuda.is_available():
             retinanet = retinanet.cuda()
+    #print(type(retinanet),dir(retinanet))
 
-    if torch.cuda.is_available():
-        retinanet = torch.nn.DataParallel(retinanet).cuda()
-    else:
-        retinanet = torch.nn.DataParallel(retinanet)
+    # I think the loaded model is already data parallel
+    if not isinstance(retinanet,torch.nn.parallel.DataParallel):
+        if torch.cuda.is_available():
+            retinanet = torch.nn.DataParallel(retinanet).cuda()
+        else:
+            retinanet = torch.nn.DataParallel(retinanet)
+    print(type(retinanet),dir(retinanet))
+    print(type(retinanet.module),dir(retinanet.module))
+    #exit()
+    # if torch.cuda.is_available():
+    #     retinanet = torch.nn.DataParallel(retinanet).cuda()
+    # else:
+    #     retinanet = torch.nn.DataParallel(retinanet)
 
     retinanet.training = True
 
@@ -107,19 +128,29 @@ def main(args=None):
     loss_hist = collections.deque(maxlen=500)
 
     retinanet.train()
-    retinanet.module.freeze_bn()
+
+    try:
+        retinanet.module.freeze_bn()
+    except:
+        retinanet.freeze_bn()#freeze_bn(retinanet)
+
+    n_total_steps = len(dataloader_train)
 
     print('Num training images: {}'.format(len(dataset_train)))
-
+    print_cycle = 1#n_total_steps//10
     for epoch_num in range(parser.epochs):
 
         retinanet.train()
-        retinanet.module.freeze_bn()
+        try:
+            retinanet.module.freeze_bn()
+        except:
+            retinanet.freeze_bn()#freeze_bn(retinanet)
 
         epoch_loss = []
 
         for iter_num, data in enumerate(dataloader_train):
             try:
+                print('iternum',iter_num,n_total_steps)
                 optimizer.zero_grad()
 
                 if torch.cuda.is_available():
@@ -145,6 +176,14 @@ def main(args=None):
 
                 epoch_loss.append(float(loss))
 
+                if True:#iter_num % (print_cycle)==0:
+                    print(f'epoch:{epoch_num+1}/{parser.epochs}, step:{iter_num+1}/{n_total_steps}, loss:{loss:.4f}')
+                    
+                    if TENSORBOARD:
+                        writer.add_scalar('Regression Loss',float(regression_loss),epoch_num*n_total_steps+iter_num)
+                        writer.add_scalar('Classification Loss',float(classification_loss),epoch_num*n_total_steps+iter_num)
+                        writer.flush()
+                        writer.close()
                 print(
                     'Epoch: {} | Iteration: {} | Classification loss: {:1.5f} | Regression loss: {:1.5f} | Running loss: {:1.5f}'.format(
                         epoch_num, iter_num, float(classification_loss), float(regression_loss), np.mean(loss_hist)))
@@ -152,7 +191,7 @@ def main(args=None):
                 del classification_loss
                 del regression_loss
             except Exception as e:
-                print(e)
+                print('error---',e)
                 continue
 
         if parser.dataset == 'coco':

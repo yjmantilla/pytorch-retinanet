@@ -31,6 +31,12 @@ def draw_caption(image, box, caption):
     cv2.putText(image, caption, (b[0], b[1] - 10), cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 2)
     cv2.putText(image, caption, (b[0], b[1] - 10), cv2.FONT_HERSHEY_PLAIN, 1, (255, 255, 255), 1)
 
+def draw_caption_center(image, box, caption):
+    b = np.array(box).astype(int)
+    coords = ((b[0]+b[2])//2,(b[1]+b[3])//2)
+    cv2.putText(image, caption, coords, cv2.FONT_HERSHEY_PLAIN, 1, (0, 0, 0), 2)
+    cv2.putText(image, caption, coords, cv2.FONT_HERSHEY_PLAIN, 1, (255, 255, 255), 1)
+
 
 def detect_image(image_path, model_path, class_list,thresh=0.5):
 
@@ -98,7 +104,7 @@ def detect_image(image_path, model_path, class_list,thresh=0.5):
             print(image.shape, image_orig.shape, scale)
             scores, classification, transformed_anchors = model(image.cuda().float())
             print('Elapsed time: {}'.format(time.time() - st))
-            idxs = np.where(scores.cpu() > thresh)
+            idxs = np.where(scores.cpu()==torch.max(scores.cpu()))
 
             for j in range(idxs[0].shape[0]):
                 bbox = transformed_anchors[idxs[0][j], :]
@@ -112,9 +118,10 @@ def detect_image(image_path, model_path, class_list,thresh=0.5):
                 score = scores[j]
                 caption = '{} {:.3f}'.format(label_name, score)
                 # draw_caption(img, (x1, y1, x2, y2), label_name)
-                draw_caption(image_orig, (x1, y1, x2, y2), caption)
                 cv2.rectangle(image_orig, (x1, y1), (x2, y2), color=(0, 0, 255), thickness=2)
-
+                draw_caption_center(image_orig, (x1, y1, x2, y2), caption)
+                label=f'answer-{img_name.split("-")[0]}'
+                draw_caption(image_orig, (x1+20, y1+20, x2, y2),label)
             cv2.imshow('detections', image_orig)
             cv2.waitKey(0)
 
@@ -130,4 +137,4 @@ if __name__ == '__main__':
 
     parser = parser.parse_args()
 
-    detect_image(parser.image_dir, parser.model_path, parser.class_list,float(parser.threshold))
+    detect_image(parser.image_dir, parser.model_path, parser.class_list)

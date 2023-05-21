@@ -5,7 +5,7 @@ import os
 import csv
 import cv2
 import argparse
-
+import os
 
 def load_classes(csv_reader):
     result = {}
@@ -38,7 +38,7 @@ def draw_caption_center(image, box, caption):
     cv2.putText(image, caption, coords, cv2.FONT_HERSHEY_PLAIN, 1, (255, 255, 255), 1)
 
 
-def detect_image(image_path, model_path, class_list,thresh=0.5):
+def detect_image(image_path, model_path, class_list,thresh=0.5,show=False):
 
     with open(class_list, 'r') as f:
         classes = load_classes(csv.reader(f, delimiter=','))
@@ -122,8 +122,12 @@ def detect_image(image_path, model_path, class_list,thresh=0.5):
                 draw_caption_center(image_orig, (x1, y1, x2, y2), caption)
                 label=f'answer-{img_name.split("-")[0]}'
                 draw_caption(image_orig, (x1+20, y1+20, x2, y2),label)
-            cv2.imshow('detections', image_orig)
-            cv2.waitKey(0)
+                os.makedirs(os.path.join(image_path,'predictions'),exist_ok=True)
+                cv2.imwrite(os.path.join(image_path,'predictions','pred-'+img_name), image_orig)
+            if show:
+                #cv2.imshow('detections', image_orig)
+                #cv2.waitKey(0)
+                pass
 
 
 if __name__ == '__main__':
@@ -134,7 +138,11 @@ if __name__ == '__main__':
     parser.add_argument('--model_path', help='Path to model')
     parser.add_argument('--class_list', help='Path to CSV file listing class names (see README)')
     parser.add_argument('--threshold', help='thresh')
+    parser.add_argument('--show', help='Path to directory containing images',default='False')
+
 
     parser = parser.parse_args()
+    show='True' in parser.show
+    print(show)
 
-    detect_image(parser.image_dir, parser.model_path, parser.class_list)
+    detect_image(parser.image_dir, parser.model_path, parser.class_list,show=parser.show)

@@ -13,7 +13,7 @@ print('CUDA available: {}'.format(torch.cuda.is_available()))
 
 #parser = argparse.ArgumentParser(description='Simple training script for training a RetinaNet network.')
 
-model_path =r"Y:\code\pytorch-retinanet\model_final.pt"
+model_path =r"Y:\code\pytorch-retinanet\models\2023-05-21_model-final_epochs-5_resnet-18_detection.pt"
 csv_annotations_path = r"Y:\code\hippoID\hippos_detection_valid.csv" 
 class_list_path =r"Y:\code\hippoID\hippos_detection_classes.csv"
 iou_threshold='0.1'
@@ -41,7 +41,7 @@ retinanet.training = False
 retinanet.eval()
 retinanet.module.freeze_bn()
 #retinanet.freeze_bn()
-print(csv_eval.evaluate(dataset_val, retinanet,iou_threshold=float(iou_threshold)))
+print(csv_eval.evaluate(dataset_val, retinanet,iou_threshold=float(iou_threshold),save_path='.'))
 
 
 
